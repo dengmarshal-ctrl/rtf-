@@ -104,6 +104,22 @@ python3 local_batch_sanitize.py \
 
 首次运行会自动安装 Python 依赖，时间会稍长一些。
 
+### macOS 一键应用（.app）
+
+如果你不想手动跑命令，直接使用仓库内的应用包：
+
+- `DocSanitizer.app`
+
+使用方式：
+
+1. 把整个项目文件夹放在本地（不要只拷贝 `.app`）。
+2. 把待处理文件放到项目内 `input_docs` 文件夹。
+3. 双击 `DocSanitizer.app`。
+4. 程序会自动打开 Terminal 执行处理流程。
+5. 结果在 `output_docs`，清单在 `output_docs/sanitize_manifest.json`。
+
+> 首次打开若出现“无法验证开发者”提示：系统设置 -> 隐私与安全性 -> 允许打开，或右键应用选择“打开”。
+
 可选参数：
 
 - `--recursive`：递归扫描子目录（默认仅扫描当前目录）
