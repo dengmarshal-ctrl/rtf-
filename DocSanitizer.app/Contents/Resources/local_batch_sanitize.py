@@ -249,7 +249,10 @@ def process_one(
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="本地批量删除 .docx/.doc/.rtf 页眉页脚")
+    parser = argparse.ArgumentParser(
+        description="本地批量删除 .docx/.doc/.rtf 页眉页脚",
+        allow_abbrev=False,
+    )
     parser.add_argument("--input-dir", required=True, help="输入目录")
     parser.add_argument("--output-dir", required=True, help="输出目录")
     parser.add_argument("--workers", type=int, default=min(4, (os.cpu_count() or 2)), help="并发数")
@@ -257,6 +260,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--overwrite", action="store_true", help="覆盖已存在输出文件")
     parser.add_argument("--retries", type=int, default=1, help="单文件失败后的重试次数")
     parser.add_argument("--timeout-sec", type=int, default=600, help="单次 LibreOffice 转换超时秒数")
+    parser.add_argument(
+        "--delete-rule",
+        action="append",
+        default=[],
+        help="删除规则，格式为 mode:value，例如 contains:方案编号、regex:方案编号[:：].*",
+    )
     parser.add_argument("--delete-rule-json", default="", help="删除规则 JSON 数组字符串")
     parser.add_argument("--delete-rule-file", default="", help="删除规则 JSON 文件路径")
     parser.add_argument("--delete-pattern", action="append", default=[], help="兼容参数：等同 regex 规则")
@@ -285,7 +294,7 @@ def main() -> int:
     delete_rules = normalize_cli_delete_rules(
         delete_rule_json=args.delete_rule_json,
         delete_rule_file=args.delete_rule_file,
-        delete_patterns=args.delete_pattern,
+        delete_patterns=[*args.delete_rule, *args.delete_pattern],
     )
     compile_delete_rules(delete_rules)
     started_at = time.time()
