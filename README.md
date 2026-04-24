@@ -112,11 +112,10 @@ python3 local_batch_sanitize.py \
 
 使用方式：
 
-1. 把整个项目文件夹放在本地（不要只拷贝 `.app`）。
-2. 把待处理文件放到项目内 `input_docs` 文件夹。
-3. 双击 `DocSanitizer.app`。
-4. 程序会直接打开本地 GUI 窗口（可选择目录、设置并发、查看实时日志）。
-5. 结果在 `output_docs`，清单在 `output_docs/sanitize_manifest.json`。
+1. 双击 `DocSanitizer.app`（可单独拷贝使用，不要求和项目同目录）。
+2. 在 GUI 里选择输入目录与输出目录。
+3. 点击“开始处理”。
+4. 结果在你选定的输出目录，清单在 `sanitize_manifest.json`。
 
 > 首次打开若出现“无法验证开发者”提示：系统设置 -> 隐私与安全性 -> 允许打开，或右键应用选择“打开”。
 

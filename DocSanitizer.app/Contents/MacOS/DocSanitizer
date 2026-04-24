@@ -3,25 +3,14 @@ set -euo pipefail
 
 APP_EXEC_DIR="$(cd "$(dirname "$0")" && pwd)"
 APP_CONTENTS_DIR="$(cd "$APP_EXEC_DIR/.." && pwd)"
-PROJECT_DIR="$(cd "$APP_CONTENTS_DIR/../.." && pwd)"
-GUI_SCRIPT="$PROJECT_DIR/local_gui_app.py"
+LAUNCHER="$APP_CONTENTS_DIR/Resources/launcher.command"
 
-if [ ! -f "$GUI_SCRIPT" ]; then
+if [ ! -f "$LAUNCHER" ]; then
   osascript <<EOF
-display alert "启动失败" message "未找到 local_gui_app.py，请确保 .app 和项目文件在同一目录。" as critical
+display alert "启动失败" message "应用启动器缺失，请重新下载应用包。" as critical
 EOF
   exit 1
 fi
 
-if command -v python3 >/dev/null 2>&1; then
-  PY_BIN="python3"
-elif command -v python >/dev/null 2>&1; then
-  PY_BIN="python"
-else
-  osascript <<EOF
-display alert "启动失败" message "未找到 Python 3，请先安装 Python 3 后重试。" as critical
-EOF
-  exit 1
-fi
-
-exec "$PY_BIN" "$GUI_SCRIPT"
+chmod +x "$LAUNCHER" || true
+exec /bin/bash "$LAUNCHER"

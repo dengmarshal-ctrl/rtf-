@@ -2,11 +2,10 @@
 set -euo pipefail
 
 APP_RESOURCES_DIR="$(cd "$(dirname "$0")" && pwd)"
-REPO_DIR="$(cd "$APP_RESOURCES_DIR/../../.." && pwd)"
-SCRIPT_PATH="$REPO_DIR/local_gui_app.py"
+SCRIPT_PATH="$APP_RESOURCES_DIR/local_gui_app.py"
 
 if [ ! -f "$SCRIPT_PATH" ]; then
-  osascript -e 'display dialog "未找到 local_gui_app.py，请确保 .app 与项目在同一目录。" buttons {"确定"} default button "确定" with icon caution'
+  osascript -e 'display dialog "应用包缺少 local_gui_app.py，请重新下载完整应用。" buttons {"确定"} default button "确定" with icon caution'
   exit 1
 fi
 
