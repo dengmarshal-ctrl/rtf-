@@ -58,3 +58,43 @@ python app.py
 - 后端文件大小、分片范围、完整性校验
 - 任务异步处理，避免阻塞上传请求
 - 单文件失败隔离，整体任务可继续执行
+
+## 本地脚本版（推荐处理大量 RTF）
+
+如果你有大量文件（尤其是 `.rtf`），建议直接在本地机器运行脚本，不走网页上传链路，速度和稳定性都会更好。
+
+### 脚本文件
+
+- `local_batch_sanitize.py`
+
+### 主要能力
+
+- 批量递归扫描目录下 `.docx/.doc/.rtf`
+- 并发处理（可配置 worker 数）
+- 实时显示处理进度、成功/失败统计
+- 产出 `sanitize_manifest.json` 便于复盘失败原因
+
+### 本地运行示例
+
+```bash
+python3 -m pip install -r requirements.txt
+
+# 扫描 input_docs 目录，输出到 output_docs，使用 4 个并发进程
+python3 local_batch_sanitize.py \
+  --input-dir ./input_docs \
+  --output-dir ./output_docs \
+  --workers 4
+```
+
+可选参数：
+
+- `--recursive`：递归扫描子目录（默认仅扫描当前目录）
+- `--workers`：并发进程数，默认 `min(4, CPU核心数)`
+- `--overwrite`：覆盖已存在输出文件
+- `--retries`：单文件失败后重试次数（默认 1）
+
+### 性能建议
+
+- 大批量 `.rtf`/`.doc` 会走 LibreOffice 转换，建议在本地 SSD 目录运行
+- `--workers` 可从 `2~6` 试起，观察 CPU 和内存占用
+- 若只处理 `.docx`，速度通常会明显快于 `.rtf/.doc`
