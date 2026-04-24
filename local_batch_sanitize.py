@@ -13,14 +13,37 @@ from docx import Document
 
 
 ALLOWED_EXTENSIONS = {".docx", ".doc", ".rtf"}
+SOFFICE_FALLBACK_PATHS = [
+    "/Applications/LibreOffice.app/Contents/MacOS/soffice",
+    "/Applications/LibreOffice.app/Contents/MacOS/libreoffice",
+    "~/Applications/LibreOffice.app/Contents/MacOS/soffice",
+    "~/Applications/LibreOffice.app/Contents/MacOS/libreoffice",
+    "/opt/homebrew/bin/soffice",
+    "/usr/local/bin/soffice",
+]
 
 
 def detect_soffice_binary() -> str:
+    env_path = os.environ.get("DOCSANITIZER_SOFFICE_PATH", "").strip()
+    if env_path:
+        expanded = Path(env_path).expanduser()
+        if expanded.exists() and os.access(expanded, os.X_OK):
+            return str(expanded)
+
     for candidate in ("soffice", "libreoffice"):
         full_path = shutil.which(candidate)
         if full_path:
             return full_path
-    raise RuntimeError("未检测到 LibreOffice，请先安装 libreoffice/soffice。")
+
+    for candidate in SOFFICE_FALLBACK_PATHS:
+        expanded = Path(candidate).expanduser()
+        if expanded.exists() and os.access(expanded, os.X_OK):
+            return str(expanded)
+
+    raise RuntimeError(
+        "未检测到 LibreOffice，请先安装 libreoffice/soffice。"
+        "如果已安装但仍提示未检测到，请设置环境变量 DOCSANITIZER_SOFFICE_PATH"
+    )
 
 
 def sanitize_story(story) -> None:

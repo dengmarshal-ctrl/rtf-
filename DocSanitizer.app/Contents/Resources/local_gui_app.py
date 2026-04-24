@@ -43,6 +43,14 @@ DEFAULT_INPUT_DIR = DATA_DIR / "input_docs"
 DEFAULT_OUTPUT_DIR = DATA_DIR / "output_docs"
 VENV_PATH = Path(os.environ.get("DOCSANITIZER_VENV_PATH", DATA_DIR / ".venv")).expanduser().resolve()
 CRASH_LOG_PATH = Path(os.environ.get("DOCSANITIZER_CRASH_LOG", DATA_DIR / "app-crash.log")).expanduser().resolve()
+SOFFICE_FALLBACK_PATHS = [
+    "/Applications/LibreOffice.app/Contents/MacOS/soffice",
+    "/Applications/LibreOffice.app/Contents/MacOS/libreoffice",
+    str(Path.home() / "Applications/LibreOffice.app/Contents/MacOS/soffice"),
+    str(Path.home() / "Applications/LibreOffice.app/Contents/MacOS/libreoffice"),
+    "/opt/homebrew/bin/soffice",
+    "/usr/local/bin/soffice",
+]
 
 
 def detect_python_bin() -> Path:
@@ -77,8 +85,24 @@ def detect_system_python_bin() -> Path:
     return Path("python3")
 
 
-def detect_soffice() -> bool:
-    return bool(shutil.which("soffice") or shutil.which("libreoffice"))
+def detect_soffice_binary() -> Path | None:
+    explicit = os.environ.get("DOCSANITIZER_SOFFICE_PATH", "").strip()
+    if explicit:
+        candidate = Path(explicit).expanduser().resolve()
+        if candidate.exists() and os.access(candidate, os.X_OK):
+            return candidate
+
+    for name in ("soffice", "libreoffice"):
+        found = shutil.which(name)
+        if found:
+            return Path(found).resolve()
+
+    for raw in SOFFICE_FALLBACK_PATHS:
+        candidate = Path(raw).expanduser()
+        if candidate.exists() and os.access(candidate, os.X_OK):
+            return candidate.resolve()
+
+    return None
 
 
 def ensure_dirs() -> None:
@@ -215,12 +239,14 @@ class App(tk.Tk if tk is not None else object):  # type: ignore[misc]
         if not REQUIREMENTS_PATH.exists():
             messagebox.showerror("缺少依赖文件", f"未找到 requirements.txt: {REQUIREMENTS_PATH}")
             return False
-        if not detect_soffice():
+        soffice_bin = detect_soffice_binary()
+        if not soffice_bin:
             messagebox.showerror(
                 "缺少 LibreOffice",
-                "未检测到 soffice/libreoffice。\n请先安装 LibreOffice 再运行。",
+                "未检测到 soffice/libreoffice。\n请确认已安装 LibreOffice，或设置 DOCSANITIZER_SOFFICE_PATH。",
             )
             return False
+        self._append_log(f"LibreOffice: {soffice_bin}")
         if self.workers.get() < 1:
             messagebox.showwarning("参数错误", "并发数必须 >= 1")
             return False
@@ -272,6 +298,7 @@ class App(tk.Tk if tk is not None else object):  # type: ignore[misc]
 
     def _build_command(self) -> list[str]:
         python_bin = detect_python_bin()
+        soffice_bin = detect_soffice_binary()
         cmd = [
             str(python_bin),
             str(SCRIPT_PATH),
@@ -286,6 +313,8 @@ class App(tk.Tk if tk is not None else object):  # type: ignore[misc]
             "--overwrite" if self.overwrite.get() else "",
             "--recursive" if self.recursive.get() else "",
         ]
+        if soffice_bin:
+            os.environ["DOCSANITIZER_SOFFICE_PATH"] = str(soffice_bin)
         return [arg for arg in cmd if arg]
 
     def _run_task(self) -> None:

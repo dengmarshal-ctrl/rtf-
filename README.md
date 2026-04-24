@@ -120,7 +120,9 @@ python3 local_batch_sanitize.py \
 > 首次打开若出现“无法验证开发者”提示：系统设置 -> 隐私与安全性 -> 允许打开，或右键应用选择“打开”。
 > 若点击后闪退，请查看日志：`~/Library/Logs/DocSanitizer/launcher.log` 与 `~/Library/Logs/DocSanitizer/app-crash.log`。
 > 如果系统 Python 缺少 tkinter，应用会自动降级到命令行处理模式（Terminal 窗口）。
-> `.app` 模式默认将运行数据与日志写入 `~/Documents/DocSanitizer`，避免写应用目录导致闪退。
+> `.app` 模式默认将运行数据写入 `~/Documents/DocSanitizer`，日志写入 `~/Library/Logs/DocSanitizer`，避免写应用目录导致闪退。
+> 若已安装 LibreOffice 仍提示“未检测到”，请在终端执行：
+> `export DOCSANITIZER_SOFFICE_PATH="/Applications/LibreOffice.app/Contents/MacOS/soffice"`
 
 ### 本地 GUI 应用（推荐）
 
