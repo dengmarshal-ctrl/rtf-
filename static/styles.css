@@ -79,6 +79,44 @@ h1 {
   flex-wrap: wrap;
 }
 
+.rules-panel {
+  margin-top: 14px;
+  border-top: 1px solid #e5e7eb;
+  padding-top: 12px;
+}
+
+.rule-row {
+  display: grid;
+  grid-template-columns: 150px 1fr auto;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.rule-select,
+.rule-input {
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 8px;
+  font-size: 13px;
+}
+
+.rule-input {
+  width: 100%;
+}
+
+.rule-remove-btn {
+  border: 0;
+  border-radius: 6px;
+  padding: 8px 10px;
+  cursor: pointer;
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.rule-actions {
+  margin-top: 10px;
+}
+
 .hint {
   color: #6b7280;
   font-size: 13px;

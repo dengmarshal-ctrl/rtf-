@@ -20,6 +20,49 @@ const jobSummary = document.getElementById("job-summary");
 const downloadSection = document.getElementById("download-section");
 const downloadBtn = document.getElementById("download-btn");
 const toast = document.getElementById("toast");
+const ruleList = document.getElementById("rule-list");
+const addRuleBtn = document.getElementById("add-rule-btn");
+
+function createRuleItem(ruleType = "contains", pattern = "") {
+  const wrapper = document.createElement("div");
+  wrapper.className = "rule-item";
+  wrapper.innerHTML = `
+    <select class="rule-type">
+      <option value="contains">包含</option>
+      <option value="prefix">前缀</option>
+      <option value="suffix">后缀</option>
+      <option value="regex">正则</option>
+    </select>
+    <input class="rule-pattern" type="text" placeholder="例如：和记黄埔医药（上海）有限公司" />
+    <button type="button" class="remove-rule-btn">删除</button>
+  `;
+  const typeEl = wrapper.querySelector(".rule-type");
+  const patternEl = wrapper.querySelector(".rule-pattern");
+  typeEl.value = ruleType;
+  patternEl.value = pattern;
+  wrapper.querySelector(".remove-rule-btn").addEventListener("click", () => {
+    wrapper.remove();
+  });
+  return wrapper;
+}
+
+function ensureRuleListDefault() {
+  if (!ruleList.children.length) {
+    ruleList.appendChild(createRuleItem("contains", ""));
+  }
+}
+
+function collectDeleteRules() {
+  const rules = [];
+  const items = ruleList.querySelectorAll(".rule-item");
+  items.forEach((item) => {
+    const type = item.querySelector(".rule-type").value;
+    const pattern = item.querySelector(".rule-pattern").value.trim();
+    if (!pattern) return;
+    rules.push({ type, pattern });
+  });
+  return rules;
+}
 
 function maskFilename(fileName) {
   const dotIndex = fileName.lastIndexOf(".");
@@ -233,11 +276,11 @@ async function uploadAll() {
   }
 }
 
-async function startJob(fileIds) {
+async function startJob(fileIds, deleteRules) {
   const payload = await requestWithRetry("/api/jobs/start", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ file_ids: fileIds }),
+    body: JSON.stringify({ file_ids: fileIds, delete_rules: deleteRules }),
   });
   return payload.job_id;
 }
@@ -285,6 +328,11 @@ async function handleStart() {
     showToast("请先选择文件", true);
     return;
   }
+  const deleteRules = collectDeleteRules();
+  if (!deleteRules.length) {
+    showToast("请至少配置一条删除规则", true);
+    return;
+  }
 
   state.busy = true;
   startBtn.disabled = true;
@@ -296,7 +344,7 @@ async function handleStart() {
   try {
     await uploadAll();
     const ids = state.files.map((item) => item.fileId).filter(Boolean);
-    state.jobId = await startJob(ids);
+    state.jobId = await startJob(ids, deleteRules);
     jobSummary.textContent = "上传完成，正在处理文档";
     await pollJobStatus(state.jobId);
   } catch (error) {
@@ -342,5 +390,10 @@ downloadBtn.addEventListener("click", () => {
   if (!state.jobId) return;
   window.location.href = `/api/jobs/${state.jobId}/download`;
 });
+addRuleBtn.addEventListener("click", () => {
+  ruleList.appendChild(createRuleItem());
+});
+
+ensureRuleListDefault();
 
 renderFiles();

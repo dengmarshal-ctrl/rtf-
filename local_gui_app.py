@@ -43,6 +43,10 @@ DEFAULT_INPUT_DIR = DATA_DIR / "input_docs"
 DEFAULT_OUTPUT_DIR = DATA_DIR / "output_docs"
 VENV_PATH = Path(os.environ.get("DOCSANITIZER_VENV_PATH", DATA_DIR / ".venv")).expanduser().resolve()
 CRASH_LOG_PATH = Path(os.environ.get("DOCSANITIZER_CRASH_LOG", DATA_DIR / "app-crash.log")).expanduser().resolve()
+DEFAULT_DELETE_RULES = [
+    {"mode": "contains", "value": "和记黄埔医药（上海）有限公司"},
+    {"mode": "regex", "value": r"方案编号[:：].*"},
+]
 SOFFICE_FALLBACK_PATHS = [
     "/Applications/LibreOffice.app/Contents/MacOS/soffice",
     "/Applications/LibreOffice.app/Contents/MacOS/libreoffice",
@@ -125,6 +129,9 @@ class App(tk.Tk if tk is not None else object):  # type: ignore[misc]
         self.recursive = tk.BooleanVar(value=True)
         self.progress_text = tk.StringVar(value="等待开始")
         self.status_text = tk.StringVar(value="就绪")
+        self.rule_mode = tk.StringVar(value="contains")
+        self.rule_value = tk.StringVar(value="")
+        self.rules: list[dict[str, str]] = [dict(item) for item in DEFAULT_DELETE_RULES]
 
         self._queue: queue.Queue = queue.Queue()
         self._running = False
@@ -140,6 +147,7 @@ class App(tk.Tk if tk is not None else object):  # type: ignore[misc]
         self._append_log(f"输出目录默认: {self.output_dir.get()}")
         self._append_log(f"批处理脚本: {SCRIPT_PATH}")
         self._append_log(f"依赖文件: {REQUIREMENTS_PATH}")
+        self._append_log(f"默认删除规则数量: {len(self.rules)}")
 
     def _build_ui(self) -> None:
         root = ttk.Frame(self, padding=12)
@@ -176,6 +184,32 @@ class App(tk.Tk if tk is not None else object):  # type: ignore[misc]
 
         for col in range(6):
             options_box.columnconfigure(col, weight=1 if col in (4, 5) else 0)
+
+        rules_box = ttk.LabelFrame(root, text="页眉页脚删除规则（可增删）", padding=10)
+        rules_box.pack(fill=tk.BOTH, pady=(10, 0))
+
+        add_row = ttk.Frame(rules_box)
+        add_row.pack(fill=tk.X)
+        ttk.Label(add_row, text="匹配方式").pack(side=tk.LEFT)
+        mode_combo = ttk.Combobox(
+            add_row,
+            width=10,
+            textvariable=self.rule_mode,
+            state="readonly",
+            values=["contains", "regex", "prefix", "suffix"],
+        )
+        mode_combo.pack(side=tk.LEFT, padx=(8, 8))
+        ttk.Label(add_row, text="内容").pack(side=tk.LEFT)
+        ttk.Entry(add_row, textvariable=self.rule_value).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(8, 8))
+        ttk.Button(add_row, text="新增规则", command=self._add_rule).pack(side=tk.LEFT)
+
+        self.rule_listbox = tk.Listbox(rules_box, height=6)
+        self.rule_listbox.pack(fill=tk.BOTH, expand=True, pady=(8, 0))
+        rule_actions = ttk.Frame(rules_box)
+        rule_actions.pack(fill=tk.X, pady=(6, 0))
+        ttk.Button(rule_actions, text="删除选中规则", command=self._remove_selected_rule).pack(side=tk.LEFT)
+        ttk.Button(rule_actions, text="清空规则（= 全删页眉页脚）", command=self._clear_rules).pack(side=tk.LEFT, padx=(8, 0))
+        self._render_rules()
 
         action_box = ttk.Frame(root)
         action_box.pack(fill=tk.X, pady=(10, 0))
@@ -225,6 +259,41 @@ class App(tk.Tk if tk is not None else object):  # type: ignore[misc]
     def _open_output_dir(self) -> None:
         self._open_path(Path(self.output_dir.get()))
 
+    def _render_rules(self) -> None:
+        self.rule_listbox.delete(0, tk.END)
+        if not self.rules:
+            self.rule_listbox.insert(tk.END, "(未配置规则：将清空页眉页脚全部内容)")
+            return
+        for idx, rule in enumerate(self.rules, start=1):
+            self.rule_listbox.insert(tk.END, f"{idx}. [{rule['mode']}] {rule['value']}")
+
+    def _add_rule(self) -> None:
+        mode = self.rule_mode.get().strip()
+        value = self.rule_value.get().strip()
+        if mode not in {"contains", "regex", "prefix", "suffix"}:
+            messagebox.showwarning("规则错误", "匹配方式必须是 contains/regex/prefix/suffix")
+            return
+        if not value:
+            messagebox.showwarning("规则错误", "规则内容不能为空")
+            return
+        self.rules.append({"mode": mode, "value": value})
+        self.rule_value.set("")
+        self._render_rules()
+
+    def _remove_selected_rule(self) -> None:
+        selection = self.rule_listbox.curselection()
+        if not selection:
+            return
+        index = selection[0]
+        if index >= len(self.rules):
+            return
+        self.rules.pop(index)
+        self._render_rules()
+
+    def _clear_rules(self) -> None:
+        self.rules = []
+        self._render_rules()
+
     def _open_path(self, path: Path) -> None:
         path.mkdir(parents=True, exist_ok=True)
         try:
@@ -247,6 +316,7 @@ class App(tk.Tk if tk is not None else object):  # type: ignore[misc]
             )
             return False
         self._append_log(f"LibreOffice: {soffice_bin}")
+        self._append_log(f"当前规则数量: {len(self.rules)}")
         if self.workers.get() < 1:
             messagebox.showwarning("参数错误", "并发数必须 >= 1")
             return False
@@ -313,6 +383,12 @@ class App(tk.Tk if tk is not None else object):  # type: ignore[misc]
             "--overwrite" if self.overwrite.get() else "",
             "--recursive" if self.recursive.get() else "",
         ]
+        for rule in self.rules:
+            mode = rule.get("mode", "").strip()
+            value = rule.get("value", "").strip()
+            if not mode or not value:
+                continue
+            cmd.extend(["--delete-rule", f"{mode}:{value}"])
         if soffice_bin:
             os.environ["DOCSANITIZER_SOFFICE_PATH"] = str(soffice_bin)
         return [arg for arg in cmd if arg]

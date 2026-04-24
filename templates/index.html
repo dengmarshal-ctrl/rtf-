@@ -18,6 +18,12 @@
         <button id="pick-files-btn" class="select-btn" type="button">选择本地文件</button>
         <input id="file-input" type="file" multiple accept=".docx,.doc,.rtf" hidden />
       </div>
+      <div class="rules-box">
+        <h3>页眉页脚删除规则（可增删）</h3>
+        <p class="hint">支持：正则、包含、前缀、后缀。匹配到的页眉/页脚段落会被删除。</p>
+        <div id="rule-list" class="rule-list"></div>
+        <button id="add-rule-btn" class="select-btn small" type="button">+ 添加规则</button>
+      </div>
       <div class="toolbar">
         <span class="hint">单文件上限 2GB，自动分片上传</span>
         <button id="start-btn" class="primary-btn" type="button" disabled>开始批量处理</button>

@@ -9,6 +9,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from delete_rules import (
+    compile_delete_rules,
+    format_rules_for_summary,
+    normalize_cli_delete_rules,
+    prune_story_by_rules,
+)
 from docx import Document
 
 
@@ -59,7 +65,7 @@ def sanitize_story(story) -> None:
     story.add_paragraph("")
 
 
-def strip_header_footer_docx(source_path: Path, target_path: Path) -> None:
+def strip_header_footer_docx(source_path: Path, target_path: Path, compiled_rules) -> None:
     document = Document(str(source_path))
     for section in document.sections:
         stories = [
@@ -71,7 +77,7 @@ def strip_header_footer_docx(source_path: Path, target_path: Path) -> None:
             section.even_page_footer,
         ]
         for story in stories:
-            sanitize_story(story)
+            prune_story_by_rules(story, compiled_rules, fallback_clear=sanitize_story)
     target_path.parent.mkdir(parents=True, exist_ok=True)
     document.save(str(target_path))
 
@@ -138,10 +144,12 @@ def sanitize_document(
     retries: int,
     timeout_sec: int,
     soffice_bin: str,
+    delete_rules: list[dict] | None = None,
 ) -> None:
+    compiled_rules = compile_delete_rules(delete_rules or [])
     ext = source_path.suffix.lower()
     if ext == ".docx":
-        strip_header_footer_docx(source_path, target_path)
+        strip_header_footer_docx(source_path, target_path, compiled_rules)
         return
     if ext not in {".doc", ".rtf"}:
         raise RuntimeError(f"不支持的文件类型: {ext}")
@@ -161,7 +169,7 @@ def sanitize_document(
                     profile_dir,
                 )
                 cleaned_docx = working / "cleaned.docx"
-                strip_header_footer_docx(source_docx, cleaned_docx)
+                strip_header_footer_docx(source_docx, cleaned_docx, compiled_rules)
 
                 convert_to = 'doc:"MS Word 97"' if ext == ".doc" else "rtf"
                 converted = libreoffice_convert(
@@ -208,6 +216,7 @@ def process_one(
     retries: int,
     timeout_sec: int,
     soffice_bin: str,
+    delete_rules: list[dict],
 ) -> dict:
     started_at = time.time()
     target_file = build_target_path(input_root, source_file, output_root)
@@ -221,7 +230,7 @@ def process_one(
         }
 
     try:
-        sanitize_document(source_file, target_file, retries, timeout_sec, soffice_bin)
+        sanitize_document(source_file, target_file, retries, timeout_sec, soffice_bin, delete_rules=delete_rules)
         return {
             "file": str(source_file),
             "output": str(target_file),
@@ -248,6 +257,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--overwrite", action="store_true", help="覆盖已存在输出文件")
     parser.add_argument("--retries", type=int, default=1, help="单文件失败后的重试次数")
     parser.add_argument("--timeout-sec", type=int, default=600, help="单次 LibreOffice 转换超时秒数")
+    parser.add_argument("--delete-rule-json", default="", help="删除规则 JSON 数组字符串")
+    parser.add_argument("--delete-rule-file", default="", help="删除规则 JSON 文件路径")
+    parser.add_argument("--delete-pattern", action="append", default=[], help="兼容参数：等同 regex 规则")
     parser.add_argument(
         "--manifest-name",
         default="sanitize_manifest.json",
@@ -270,8 +282,20 @@ def main() -> int:
 
     soffice_bin = detect_soffice_binary()
     workers = max(1, args.workers)
+    delete_rules = normalize_cli_delete_rules(
+        delete_rule_json=args.delete_rule_json,
+        delete_rule_file=args.delete_rule_file,
+        delete_patterns=args.delete_pattern,
+    )
+    compile_delete_rules(delete_rules)
     started_at = time.time()
     print(f"找到 {total} 个文件，开始处理。并发数={workers}")
+    if delete_rules:
+        print("启用删除规则:")
+        for index, summary in enumerate(format_rules_for_summary(delete_rules), start=1):
+            print(f"  {index}. {summary}")
+    else:
+        print("未配置删除规则：将清空页眉页脚全部内容。")
 
     results: list[dict] = []
     success = failed = skipped = 0
@@ -288,6 +312,7 @@ def main() -> int:
                 max(0, args.retries),
                 max(60, args.timeout_sec),
                 soffice_bin,
+                delete_rules,
             )
             for file_path in files
         ]
@@ -321,6 +346,7 @@ def main() -> int:
             "skipped": skipped,
             "elapsed_sec": elapsed,
             "workers": workers,
+            "delete_rules": delete_rules,
             "input_dir": str(input_dir),
             "output_dir": str(output_dir),
         },

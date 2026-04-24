@@ -1,4 +1,5 @@
 import json
+import re
 import shutil
 import subprocess
 import threading
@@ -8,6 +9,7 @@ import zipfile
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from delete_rules import compile_delete_rules, normalize_delete_rules
 from docx import Document
 from flask import Flask, abort, jsonify, render_template, request, send_file
 from werkzeug.utils import secure_filename
@@ -65,7 +67,68 @@ def sanitize_story(story) -> None:
     story.add_paragraph("")
 
 
-def strip_header_footer_docx(source_path: Path, target_path: Path) -> None:
+def _remove_paragraph(paragraph) -> None:
+    parent = paragraph._element.getparent()
+    if parent is not None:
+        parent.remove(paragraph._element)
+
+
+def _remove_table(table) -> None:
+    parent = table._element.getparent()
+    if parent is not None:
+        parent.remove(table._element)
+
+
+def _match_text(text: str, compiled_rules: list) -> bool:
+    for rule in compiled_rules:
+        rule_type = rule["type"]
+        value = rule["value"]
+        text_value = text or ""
+        if rule_type == "regex":
+            if value.search(text_value):
+                return True
+        elif rule_type == "contains":
+            if value in text_value:
+                return True
+        elif rule_type == "prefix":
+            if text_value.startswith(value):
+                return True
+        elif rule_type == "suffix":
+            if text_value.endswith(value):
+                return True
+    return False
+
+
+def sanitize_story_by_rules(story, compiled_rules: list) -> None:
+    if not compiled_rules:
+        sanitize_story(story)
+        return
+
+    for paragraph in list(story.paragraphs):
+        if _match_text(paragraph.text, compiled_rules):
+            _remove_paragraph(paragraph)
+
+    for table in list(story.tables):
+        for row in table.rows:
+            for cell in row.cells:
+                for paragraph in list(cell.paragraphs):
+                    if _match_text(paragraph.text, compiled_rules):
+                        _remove_paragraph(paragraph)
+
+        remaining = "".join(
+            paragraph.text.strip()
+            for row in table.rows
+            for cell in row.cells
+            for paragraph in cell.paragraphs
+        )
+        if not remaining:
+            _remove_table(table)
+
+    if not story.paragraphs and not story.tables:
+        story.add_paragraph("")
+
+
+def strip_header_footer_docx(source_path: Path, target_path: Path, compiled_rules: list) -> None:
     document = Document(str(source_path))
     for section in document.sections:
         stories = [
@@ -77,7 +140,7 @@ def strip_header_footer_docx(source_path: Path, target_path: Path) -> None:
             section.even_page_footer,
         ]
         for story in stories:
-            sanitize_story(story)
+            sanitize_story_by_rules(story, compiled_rules)
     document.save(str(target_path))
 
 
@@ -121,15 +184,16 @@ def libreoffice_convert(input_file: Path, out_dir: Path, convert_to: str) -> Pat
     return candidates[-1]
 
 
-def sanitize_document(source_path: Path, original_name: str, destination_dir: Path) -> Path:
+def sanitize_document(source_path: Path, original_name: str, destination_dir: Path, delete_rules: list[dict]) -> Path:
     destination_dir.mkdir(parents=True, exist_ok=True)
     ext = Path(original_name).suffix.lower()
     safe_stem = Path(secure_filename(original_name)).stem or "document"
     target_name = f"{safe_stem}_sanitized{ext}"
     target_path = destination_dir / target_name
+    compiled_rules = compile_delete_rules(delete_rules)
 
     if ext == ".docx":
-        strip_header_footer_docx(source_path, target_path)
+        strip_header_footer_docx(source_path, target_path, compiled_rules)
         return target_path
 
     if ext not in {".doc", ".rtf"}:
@@ -139,7 +203,7 @@ def sanitize_document(source_path: Path, original_name: str, destination_dir: Pa
         working = Path(working_dir)
         source_docx = libreoffice_convert(source_path, working, "docx")
         cleaned_docx = working / "cleaned.docx"
-        strip_header_footer_docx(source_docx, cleaned_docx)
+        strip_header_footer_docx(source_docx, cleaned_docx, compiled_rules)
 
         convert_to = 'doc:"MS Word 97"' if ext == ".doc" else "rtf"
         converted = libreoffice_convert(cleaned_docx, working, convert_to)
@@ -184,6 +248,7 @@ def process_job(job_id: str) -> None:
     result_dir = OUTPUT_DIR / job_id
     result_dir.mkdir(parents=True, exist_ok=True)
     file_results = []
+    delete_rules = job.get("delete_rules", [])
 
     for index, file_id in enumerate(job["file_ids"], start=1):
         with _upload_lock:
@@ -201,6 +266,7 @@ def process_job(job_id: str) -> None:
                 Path(upload_info["assembled_path"]),
                 upload_info["filename"],
                 result_dir,
+                delete_rules,
             )
             with _job_lock:
                 job["files"][file_id]["status"] = "done"
@@ -384,8 +450,19 @@ def upload_complete():
 def start_job():
     payload = request.get_json(silent=True) or {}
     file_ids = payload.get("file_ids", [])
+    raw_rules = payload.get("delete_rules", [])
     if not isinstance(file_ids, list) or not file_ids:
         return jsonify({"error": "file_ids 不能为空"}), 400
+    if raw_rules is not None and not isinstance(raw_rules, list):
+        return jsonify({"error": "delete_rules 必须为数组"}), 400
+
+    try:
+        delete_rules = normalize_delete_rules(raw_rules or [])
+        compile_delete_rules(delete_rules)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except re.error as exc:
+        return jsonify({"error": f"规则正则无效: {exc}"}), 400
 
     with _upload_lock:
         for file_id in file_ids:
@@ -413,6 +490,7 @@ def start_job():
             "processed": 0,
             "results": [],
             "zip_path": "",
+            "delete_rules": delete_rules,
             "created_at": int(time.time()),
         }
 

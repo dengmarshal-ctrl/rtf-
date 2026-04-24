@@ -7,6 +7,7 @@
 - 支持批量上传与批量处理
 - 支持大文件（100MB+）分片上传（默认 8MB/片）
 - 支持 `.docx`、`.doc`、`.rtf`
+- 支持可配置删除规则（正则 / 包含 / 前缀 / 后缀）
 - 处理进度脱敏展示（文件名遮蔽显示）
 - 失败重试与错误隔离（单文件失败不影响其他文件）
 - 处理完成后打包下载 ZIP（附带 `manifest.json`）
@@ -17,6 +18,9 @@
 - 文档处理：
   - `.docx`：python-docx 直接移除各 section 的 header/footer 内容
   - `.doc` / `.rtf`：经 LibreOffice 转为 `.docx` 后处理，再转换回原格式
+- 删除策略：
+  - 未配置规则：清空页眉页脚全部内容（兼容旧行为）
+  - 配置规则：仅删除匹配规则的页眉页脚文本/表格内容
 - 前端：原生 HTML/CSS/JavaScript（支持拖拽 + 文件选择器）
 
 ## 运行环境
@@ -86,6 +90,16 @@ python3 local_batch_sanitize.py \
   --workers 4
 ```
 
+按规则删除示例：
+
+```bash
+python3 local_batch_sanitize.py \
+  --input-dir ./input_docs \
+  --output-dir ./output_docs \
+  --delete-rule 'contains:和记黄埔医药（上海）有限公司' \
+  --delete-rule 'regex:^方案编号：'
+```
+
 ### 双击即用（不用命令行）
 
 仓库里已提供两个双击脚本：
@@ -134,6 +148,7 @@ GUI 功能：
 
 - 可视化选择输入目录与输出目录
 - 可设置并发数、重试次数
+- 可增删删除规则（正则 / 包含 / 前缀 / 后缀）
 - 一键开始处理，实时日志滚动
 - 完成后弹窗提示成功/失败统计
 
