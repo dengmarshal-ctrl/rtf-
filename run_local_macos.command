@@ -66,12 +66,7 @@ echo ""
 echo "开始处理，workers=$WORKERS ..."
 echo ""
 
-"$VENV_DIR/bin/python" "$SCRIPT_DIR/local_batch_sanitize.py" \
-  --input-dir "$INPUT_DIR" \
-  --output-dir "$OUTPUT_DIR" \
-  --workers "$WORKERS" \
-  --recursive \
-  --overwrite
+"$VENV_DIR/bin/python" "$SCRIPT_DIR/local_gui_app.py"
 
 echo ""
 echo "处理完成。结果目录: $OUTPUT_DIR"
