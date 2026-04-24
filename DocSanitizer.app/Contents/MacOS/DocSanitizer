@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+APP_EXEC_DIR="$(cd "$(dirname "$0")" && pwd)"
+APP_CONTENTS_DIR="$(cd "$APP_EXEC_DIR/.." && pwd)"
+LAUNCHER="$APP_CONTENTS_DIR/Resources/launcher.command"
+
+if [ ! -f "$LAUNCHER" ]; then
+  osascript <<EOF
+display alert "启动失败" message "应用启动器缺失，请重新下载应用包。" as critical
+EOF
+  exit 1
+fi
+
+chmod +x "$LAUNCHER" || true
+exec /bin/bash "$LAUNCHER"

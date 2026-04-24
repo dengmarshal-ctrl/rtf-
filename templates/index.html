@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>文档页眉页脚清理工具</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <main class="container">
+    <h1>文档页眉页脚清理工具</h1>
+    <p class="subtitle">支持 .docx / .doc / .rtf 批量上传，支持 100MB+ 分片上传，进度脱敏展示。</p>
+
+    <section class="card">
+      <div id="drop-zone" class="drop-zone" aria-label="拖拽上传区域">
+        <p>拖拽文件到这里上传</p>
+        <p>或</p>
+        <button id="pick-files-btn" class="select-btn" type="button">选择本地文件</button>
+        <input id="file-input" type="file" multiple accept=".docx,.doc,.rtf" hidden />
+      </div>
+      <div class="rules-box">
+        <h3>页眉页脚删除规则（可增删）</h3>
+        <p class="hint">支持：正则、包含、前缀、后缀。匹配到的页眉/页脚段落会被删除。</p>
+        <div id="rule-list" class="rule-list"></div>
+        <button id="add-rule-btn" class="select-btn small" type="button">+ 添加规则</button>
+      </div>
+      <div class="toolbar">
+        <span class="hint">单文件上限 2GB，自动分片上传</span>
+        <button id="start-btn" class="primary-btn" type="button" disabled>开始批量处理</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>任务进度（脱敏）</h2>
+      <div class="overall-progress">
+        <div class="progress-bar">
+          <div id="global-progress-bar" class="progress-value"></div>
+        </div>
+        <div id="global-progress-text" class="progress-text">0%</div>
+        <div id="job-summary" class="hint">等待上传</div>
+      </div>
+
+      <div id="file-list" class="file-list"></div>
+      <div id="download-section" class="download-area hidden">
+        <button id="download-btn" class="select-btn" type="button">下载处理结果 ZIP</button>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>
