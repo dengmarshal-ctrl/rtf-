@@ -86,6 +86,24 @@ python3 local_batch_sanitize.py \
   --workers 4
 ```
 
+### 双击即用（不用命令行）
+
+仓库里已提供两个双击脚本：
+
+- Windows：`run_local_windows.bat`
+- macOS：`run_local_macos.command`
+
+#### 使用步骤（Windows / macOS 通用）
+
+1. 把待处理文件放到 `input_docs` 文件夹（脚本会自动创建）。
+2. 双击对应脚本：
+   - Windows 双击 `run_local_windows.bat`
+   - macOS 双击 `run_local_macos.command`
+3. 等待脚本执行完成，结果在 `output_docs` 目录。
+4. 处理清单在 `output_docs/sanitize_manifest.json`。
+
+首次运行会自动安装 Python 依赖，时间会稍长一些。
+
 可选参数：
 
 - `--recursive`：递归扫描子目录（默认仅扫描当前目录）
