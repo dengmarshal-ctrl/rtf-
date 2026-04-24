@@ -130,5 +130,6 @@ python3 local_batch_sanitize.py \
 ### 性能建议
 
 - 大批量 `.rtf`/`.doc` 会走 LibreOffice 转换，建议在本地 SSD 目录运行
+- 若出现少量 `rtf -> docx` 转换失败，优先把并发降到 `2~4` 再重跑失败文件
 - `--workers` 可从 `2~6` 试起，观察 CPU 和内存占用
 - 若只处理 `.docx`，速度通常会明显快于 `.rtf/.doc`

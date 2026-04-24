@@ -45,14 +45,14 @@ echo "正在安装/更新依赖..."
 "$VENV_DIR/bin/python" -m pip install --upgrade pip >/dev/null
 "$VENV_DIR/bin/python" -m pip install -r "$SCRIPT_DIR/requirements.txt"
 
-WORKERS=4
+WORKERS=3
 if command -v sysctl >/dev/null 2>&1; then
   CPU_COUNT="$(sysctl -n hw.logicalcpu 2>/dev/null || echo 4)"
   if [[ "$CPU_COUNT" =~ ^[0-9]+$ ]]; then
-    if [ "$CPU_COUNT" -lt 4 ]; then
+    if [ "$CPU_COUNT" -lt 3 ]; then
       WORKERS="$CPU_COUNT"
-    elif [ "$CPU_COUNT" -gt 6 ]; then
-      WORKERS=6
+    elif [ "$CPU_COUNT" -gt 4 ]; then
+      WORKERS=4
     else
       WORKERS="$CPU_COUNT"
     fi

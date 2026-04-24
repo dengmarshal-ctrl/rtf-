@@ -59,25 +59,40 @@ def libreoffice_convert(
     convert_to: str,
     timeout_sec: int,
     soffice_bin: str,
+    user_profile_dir: Path,
 ) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
+    user_profile_dir.mkdir(parents=True, exist_ok=True)
     command = [
         soffice_bin,
         "--headless",
+        f"-env:UserInstallation={user_profile_dir.resolve().as_uri()}",
         "--convert-to",
         convert_to,
         "--outdir",
         str(out_dir),
         str(input_file),
     ]
-    subprocess.run(
-        command,
-        check=True,
-        timeout=timeout_sec,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
+    try:
+        subprocess.run(
+            command,
+            check=True,
+            timeout=timeout_sec,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        stdout = (exc.stdout or "").strip()
+        stderr = (exc.stderr or "").strip()
+        raise RuntimeError(
+            f"LibreOffice 转换失败({input_file.name} -> {convert_to})，"
+            f"exit={exc.returncode}，stdout={stdout[:500]}，stderr={stderr[:500]}"
+        ) from exc
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            f"LibreOffice 转换超时({input_file.name} -> {convert_to})，timeout={timeout_sec}s"
+        ) from exc
 
     target_ext = convert_to.split(":")[0].lower()
     expected = out_dir / f"{input_file.stem}.{target_ext}"
@@ -86,7 +101,11 @@ def libreoffice_convert(
 
     candidates = sorted(out_dir.glob(f"{input_file.stem}.*"), key=lambda x: x.stat().st_mtime)
     if not candidates:
-        raise RuntimeError(f"文件转换失败：{input_file.name} -> {convert_to}")
+        generated = ", ".join(path.name for path in out_dir.glob("*"))
+        raise RuntimeError(
+            f"文件转换失败：{input_file.name} -> {convert_to}，输出目录为空或无目标文件。"
+            f"目录内容: {generated or '空'}"
+        )
     return candidates[-1]
 
 
@@ -109,12 +128,27 @@ def sanitize_document(
         try:
             with TemporaryDirectory() as working_dir:
                 working = Path(working_dir)
-                source_docx = libreoffice_convert(source_path, working, "docx", timeout_sec, soffice_bin)
+                profile_dir = working / "lo_profile"
+                source_docx = libreoffice_convert(
+                    source_path,
+                    working,
+                    "docx",
+                    timeout_sec,
+                    soffice_bin,
+                    profile_dir,
+                )
                 cleaned_docx = working / "cleaned.docx"
                 strip_header_footer_docx(source_docx, cleaned_docx)
 
                 convert_to = 'doc:"MS Word 97"' if ext == ".doc" else "rtf"
-                converted = libreoffice_convert(cleaned_docx, working, convert_to, timeout_sec, soffice_bin)
+                converted = libreoffice_convert(
+                    cleaned_docx,
+                    working,
+                    convert_to,
+                    timeout_sec,
+                    soffice_bin,
+                    profile_dir,
+                )
                 target_path.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(converted, target_path)
             return
@@ -163,14 +197,23 @@ def process_one(
             "message": "已存在同名输出文件，使用 --overwrite 可覆盖",
         }
 
-    sanitize_document(source_file, target_file, retries, timeout_sec, soffice_bin)
-    return {
-        "file": str(source_file),
-        "output": str(target_file),
-        "status": "success",
-        "duration_sec": round(time.time() - started_at, 3),
-        "message": "",
-    }
+    try:
+        sanitize_document(source_file, target_file, retries, timeout_sec, soffice_bin)
+        return {
+            "file": str(source_file),
+            "output": str(target_file),
+            "status": "success",
+            "duration_sec": round(time.time() - started_at, 3),
+            "message": "",
+        }
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "file": str(source_file),
+            "output": str(target_file),
+            "status": "failed",
+            "duration_sec": round(time.time() - started_at, 3),
+            "message": str(exc),
+        }
 
 
 def parse_args() -> argparse.Namespace:
@@ -228,16 +271,7 @@ def main() -> int:
 
         for future in as_completed(futures):
             done += 1
-            try:
-                result = future.result()
-            except Exception as exc:  # noqa: BLE001
-                result = {
-                    "file": "unknown",
-                    "output": "",
-                    "status": "failed",
-                    "duration_sec": 0,
-                    "message": str(exc),
-                }
+            result = future.result()
 
             status = result["status"]
             if status == "success":
