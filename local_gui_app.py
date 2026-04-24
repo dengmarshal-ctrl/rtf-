@@ -4,13 +4,37 @@ import os
 import queue
 import shutil
 import subprocess
+import sys
 import threading
-import tkinter as tk
+import traceback
 from pathlib import Path
-from tkinter import filedialog, messagebox, ttk
+
+try:
+    import tkinter as tk
+    from tkinter import filedialog, messagebox, ttk
+    TK_IMPORT_ERROR = None
+except Exception as exc:  # noqa: BLE001
+    tk = None
+    filedialog = None
+    messagebox = None
+    ttk = None
+    TK_IMPORT_ERROR = exc
 
 BASE_DIR = Path(__file__).resolve().parent
-DATA_DIR = Path(os.environ.get("DOCSANITIZER_DATA_DIR", BASE_DIR)).expanduser().resolve()
+DEFAULT_DATA_ROOT = Path.home() / "Documents" / "DocSanitizer"
+
+
+def resolve_data_dir() -> Path:
+    explicit = os.environ.get("DOCSANITIZER_DATA_DIR")
+    if explicit:
+        return Path(explicit).expanduser().resolve()
+    base_as_text = str(BASE_DIR)
+    if ".app/Contents/Resources" in base_as_text or not os.access(BASE_DIR, os.W_OK):
+        return DEFAULT_DATA_ROOT
+    return BASE_DIR
+
+
+DATA_DIR = resolve_data_dir()
 SCRIPT_PATH = Path(os.environ.get("DOCSANITIZER_BATCH_SCRIPT", BASE_DIR / "local_batch_sanitize.py")).expanduser().resolve()
 REQUIREMENTS_PATH = Path(
     os.environ.get("DOCSANITIZER_REQUIREMENTS_FILE", BASE_DIR / "requirements.txt")
@@ -18,6 +42,7 @@ REQUIREMENTS_PATH = Path(
 DEFAULT_INPUT_DIR = DATA_DIR / "input_docs"
 DEFAULT_OUTPUT_DIR = DATA_DIR / "output_docs"
 VENV_PATH = Path(os.environ.get("DOCSANITIZER_VENV_PATH", DATA_DIR / ".venv")).expanduser().resolve()
+CRASH_LOG_PATH = Path(os.environ.get("DOCSANITIZER_CRASH_LOG", DATA_DIR / "app-crash.log")).expanduser().resolve()
 
 
 def detect_python_bin() -> Path:
@@ -25,6 +50,30 @@ def detect_python_bin() -> Path:
         return VENV_PATH / "bin" / "python"
     if (VENV_PATH / "Scripts" / "python.exe").exists():
         return VENV_PATH / "Scripts" / "python.exe"
+    return detect_system_python_bin()
+
+
+def detect_system_python_bin() -> Path:
+    explicit = os.environ.get("DOCSANITIZER_PYTHON_BIN", "").strip()
+    if explicit and Path(explicit).exists():
+        return Path(explicit).resolve()
+
+    if Path(sys.executable).exists():
+        return Path(sys.executable).resolve()
+
+    for candidate in (
+        "/opt/homebrew/bin/python3",
+        "/usr/local/bin/python3",
+        "/Library/Frameworks/Python.framework/Versions/Current/bin/python3",
+        "/usr/bin/python3",
+    ):
+        path = Path(candidate)
+        if path.exists():
+            return path
+
+    found = shutil.which("python3")
+    if found:
+        return Path(found).resolve()
     return Path("python3")
 
 
@@ -37,7 +86,7 @@ def ensure_dirs() -> None:
     DEFAULT_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 
-class App(tk.Tk):
+class App(tk.Tk if tk is not None else object):  # type: ignore[misc]
     def __init__(self):
         super().__init__()
         self.title("DocSanitizer 本地应用")
@@ -62,8 +111,11 @@ class App(tk.Tk):
         self._build_ui()
         self.after(150, self._poll_queue)
         self._append_log("欢迎使用 DocSanitizer 本地应用")
+        self._append_log(f"数据目录: {DATA_DIR}")
         self._append_log(f"输入目录默认: {self.input_dir.get()}")
         self._append_log(f"输出目录默认: {self.output_dir.get()}")
+        self._append_log(f"批处理脚本: {SCRIPT_PATH}")
+        self._append_log(f"依赖文件: {REQUIREMENTS_PATH}")
 
     def _build_ui(self) -> None:
         root = ttk.Frame(self, padding=12)
@@ -180,14 +232,14 @@ class App(tk.Tk):
         return True
 
     def _ensure_venv_and_deps(self) -> None:
-        python3_bin = shutil.which("python3")
-        if not python3_bin:
+        python3_bin = detect_system_python_bin()
+        if str(python3_bin) == "python3":
             raise RuntimeError("未找到 python3，请先安装 Python 3。")
 
         python_bin = detect_python_bin()
         if not (VENV_PATH / "bin" / "python").exists() and not (VENV_PATH / "Scripts" / "python.exe").exists():
             self._queue.put(("log", "首次运行：正在创建虚拟环境..."))
-            subprocess.run([python3_bin, "-m", "venv", str(VENV_PATH)], check=True)
+            subprocess.run([str(python3_bin), "-m", "venv", str(VENV_PATH)], check=True)
             python_bin = detect_python_bin()
 
         self._queue.put(("log", "正在安装/更新依赖（首次可能稍慢）..."))
@@ -328,9 +380,33 @@ class App(tk.Tk):
 
 
 def main() -> int:
-    app = App()
-    app.mainloop()
-    return 0
+    try:
+        if TK_IMPORT_ERROR is not None:
+            raise RuntimeError(f"无法加载 tkinter 图形组件: {TK_IMPORT_ERROR}")
+        app = App()
+        app.mainloop()
+        return 0
+    except Exception as exc:  # noqa: BLE001
+        details = traceback.format_exc()
+        CRASH_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        CRASH_LOG_PATH.write_text(details, encoding="utf-8")
+        try:
+            subprocess.run(
+                [
+                    "osascript",
+                    "-e",
+                    (
+                        'display alert "DocSanitizer 启动失败" '
+                        f'message "错误信息已写入: {CRASH_LOG_PATH}" as critical'
+                    ),
+                ],
+                check=False,
+            )
+        except Exception:
+            pass
+        print(f"DocSanitizer 启动失败: {exc}", file=sys.stderr)
+        print(details, file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":
